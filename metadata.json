@@ -2,5 +2,7 @@
   "name": "Scale Opus",
   "description": "Power up your growth engine with Scale Opus. Comprehensive system assessments, custom CRM, branding, and conversational AI solutions built to scale your business.",
   "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }

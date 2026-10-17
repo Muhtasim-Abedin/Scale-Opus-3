@@ -4562,18 +4562,40 @@
             chatBox.scrollTop = chatBox.scrollHeight;
 
             try {
-                const response = await fetch('/api/chat', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        message: messageText,
-                        history: sandboxChatHistory,
-                        fastMode: sandboxFastMode
-                    })
-                });
-                const data = await response.json();
-                if (!response.ok || !data.reply) {
-                    throw new Error(data.error || 'Unable to reach Scale Opus Gemini AI right now.');
+                const endpoints = [
+                    '/api/chat',
+                    'https://ais-pre-57s2bsqktsksju3wh2ll7q-591629809317.asia-east1.run.app/api/chat'
+                ];
+                let data = null;
+                let lastError = null;
+
+                for (const endpoint of endpoints) {
+                    try {
+                        const response = await fetch(endpoint, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                message: messageText,
+                                history: sandboxChatHistory,
+                                fastMode: sandboxFastMode
+                            })
+                        });
+                        const contentType = response.headers.get('content-type') || '';
+                        if (!contentType.includes('application/json')) continue;
+                        const parsed = await response.json();
+                        if (response.ok && parsed.reply) {
+                            data = parsed;
+                            break;
+                        } else {
+                            lastError = new Error(parsed.error || 'Error from AI service');
+                        }
+                    } catch (innerErr) {
+                        lastError = innerErr;
+                    }
+                }
+
+                if (!data || !data.reply) {
+                    throw lastError || new Error('Unable to reach Scale Opus Gemini AI right now.');
                 }
 
                 sandboxChatHistory.push({ role: 'user', text: messageText });
@@ -4825,7 +4847,197 @@
             updateFormProgress();
             window.addEventListener('scroll', handleGlobalScrolls, { passive: true });
             handleGlobalScrolls();
+
+            // Static Hosting (GitHub Pages) Fallback for Floating AI Concierge
+            setTimeout(() => {
+                const rootEl = document.getElementById('root');
+                if (rootEl && rootEl.children.length === 0) {
+                    initStaticFloatingChatbot(rootEl);
+                }
+            }, 900);
         });
+
+        let floatingHistory = [];
+        let floatingFastMode = false;
+        let floatingLoading = false;
+
+        function initStaticFloatingChatbot(container) {
+            container.innerHTML = `
+                <div class="fixed bottom-6 left-6 z-50 font-sans">
+                    <div id="static-chat-drawer" class="hidden mb-4 flex-col overflow-hidden rounded-3xl border border-brandCyan/40 bg-[#080b12] text-slate-100 shadow-2xl w-[calc(100vw-3rem)] sm:w-[400px] h-[540px] max-h-[80vh]">
+                        <div class="h-[2px] w-full bg-gradient-to-r from-brandOrange via-brandCyan to-brandPurple"></div>
+                        <div class="flex items-center justify-between border-b border-white/10 bg-[#0c111d] px-4 py-3.5">
+                            <div class="flex items-center gap-3">
+                                <div class="w-9 h-9 rounded-xl border border-brandOrange/50 bg-brandOrange/20 flex items-center justify-center text-brandOrange">
+                                    <i class="fa-solid fa-robot"></i>
+                                </div>
+                                <div>
+                                    <div class="flex items-center gap-2">
+                                        <span class="text-xs font-bold text-white font-display">Scale Opus AI Concierge</span>
+                                        <span class="rounded-full border border-brandCyan/30 bg-brandCyan/10 px-2 py-0.5 font-mono text-[8px] font-bold uppercase text-brandCyan">Gemini AI</span>
+                                    </div>
+                                    <span class="block font-mono text-[9px] text-slate-400">Solutions Architect • 24/7</span>
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-1.5 font-mono">
+                                <button type="button" id="floating-mode-btn" onclick="toggleFloatingFastMode()" class="rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-[9px] font-bold text-slate-300 hover:text-white">
+                                    <i class="fa-solid fa-bolt text-brandCyan mr-1"></i><span id="floating-mode-label">Smart</span>
+                                </button>
+                                <button type="button" onclick="resetFloatingChat()" title="Reset" class="w-7 h-7 rounded-lg border border-white/10 bg-white/5 text-slate-400 hover:text-white flex items-center justify-center">
+                                    <i class="fa-solid fa-rotate-left text-[10px]"></i>
+                                </button>
+                                <button type="button" onclick="toggleStaticFloatingChat()" title="Close" class="w-7 h-7 rounded-lg border border-white/10 bg-white/5 text-slate-400 hover:text-white flex items-center justify-center">
+                                    <i class="fa-solid fa-xmark text-xs"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div id="floating-chat-thread" class="flex-1 space-y-3.5 overflow-y-auto p-4">
+                            <div class="flex items-start space-x-2.5">
+                                <div class="w-7 h-7 rounded-lg bg-brandOrange/20 border border-brandOrange/40 flex items-center justify-center text-brandOrange text-[10px] flex-shrink-0 mt-0.5">
+                                    <i class="fa-solid fa-robot"></i>
+                                </div>
+                                <div class="bg-slate-900 border border-white/10 rounded-2xl rounded-tl-none px-3.5 py-2.5 max-w-[85%] text-left">
+                                    <p class="text-xs text-slate-200 leading-relaxed">Welcome to <strong class="text-white">Scale Opus</strong>! Ask me anything about our <strong class="text-white">AI Chatbots, Voice Assistants, Process Automation, Custom Web &amp; Brand Systems, CRM Analytics, or Pricing Plans</strong>.</p>
+                                </div>
+                            </div>
+                        </div>
+                        <form onsubmit="event.preventDefault(); sendFloatingMessage();" class="flex items-center gap-2 border-t border-white/10 bg-[#070a10] p-3">
+                            <input id="floating-chat-input" type="text" placeholder="Ask about services, AI bots, CRM, pricing..." class="flex-1 rounded-xl border border-white/15 bg-[#0f1420] px-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:border-brandCyan focus:outline-none">
+                            <button type="submit" id="floating-send-btn" class="w-9 h-9 rounded-xl bg-brandOrange text-white flex items-center justify-center hover:brightness-110">
+                                <i class="fa-solid fa-paper-plane text-xs"></i>
+                            </button>
+                        </form>
+                    </div>
+                    <button type="button" onclick="toggleStaticFloatingChat()" class="flex items-center gap-3 rounded-full border border-brandCyan/40 bg-[#0b0f19] px-4 py-3 text-white shadow-2xl hover:border-brandOrange transition-all">
+                        <div class="w-9 h-9 rounded-full bg-brandOrange flex items-center justify-center text-white">
+                            <i class="fa-solid fa-comments text-xs" id="floating-launcher-icon"></i>
+                        </div>
+                        <div class="pr-1 text-left">
+                            <span class="block text-xs font-bold text-white font-display">Ask Scale Opus AI</span>
+                            <span class="block font-mono text-[9px] uppercase tracking-wider text-brandCyan">Services &amp; Pricing Chat</span>
+                        </div>
+                    </button>
+                </div>
+            `;
+        }
+
+        function toggleStaticFloatingChat() {
+            const drawer = document.getElementById('static-chat-drawer');
+            if (!drawer) return;
+            if (drawer.classList.contains('hidden')) {
+                drawer.classList.remove('hidden');
+                drawer.classList.add('flex');
+                document.getElementById('floating-chat-input')?.focus();
+            } else {
+                drawer.classList.add('hidden');
+                drawer.classList.remove('flex');
+            }
+        }
+
+        function toggleFloatingFastMode() {
+            floatingFastMode = !floatingFastMode;
+            const label = document.getElementById('floating-mode-label');
+            if (label) label.textContent = floatingFastMode ? 'Fast' : 'Smart';
+        }
+
+        function resetFloatingChat() {
+            floatingHistory = [];
+            const thread = document.getElementById('floating-chat-thread');
+            if (thread) {
+                thread.innerHTML = `
+                    <div class="flex items-start space-x-2.5">
+                        <div class="w-7 h-7 rounded-lg bg-brandOrange/20 border border-brandOrange/40 flex items-center justify-center text-brandOrange text-[10px] flex-shrink-0 mt-0.5">
+                            <i class="fa-solid fa-robot"></i>
+                        </div>
+                        <div class="bg-slate-900 border border-white/10 rounded-2xl rounded-tl-none px-3.5 py-2.5 max-w-[85%] text-left">
+                            <p class="text-xs text-slate-200 leading-relaxed">Welcome to <strong class="text-white">Scale Opus</strong>! Ask me anything about our <strong class="text-white">AI Chatbots, Voice Assistants, Process Automation, Custom Web &amp; Brand Systems, CRM Analytics, or Pricing Plans</strong>.</p>
+                        </div>
+                    </div>
+                `;
+            }
+        }
+
+        async function sendFloatingMessage() {
+            if (floatingLoading) return;
+            const input = document.getElementById('floating-chat-input');
+            const thread = document.getElementById('floating-chat-thread');
+            const text = input ? input.value.trim() : '';
+            if (!text || !thread) return;
+
+            floatingLoading = true;
+            input.value = '';
+
+            const userDiv = document.createElement('div');
+            userDiv.className = 'flex items-start space-x-2.5 justify-end';
+            userDiv.innerHTML = `
+                <div class="bg-brandOrange rounded-2xl rounded-tr-none px-3.5 py-2.5 max-w-[85%] text-left">
+                    <p class="text-xs text-white leading-relaxed break-words">${escapeHTML(text)}</p>
+                </div>
+            `;
+            thread.appendChild(userDiv);
+
+            const botDiv = document.createElement('div');
+            botDiv.className = 'flex items-start space-x-2.5';
+            botDiv.innerHTML = `
+                <div class="w-7 h-7 rounded-lg bg-brandCyan/20 border border-brandCyan/40 flex items-center justify-center text-brandCyan text-[10px] flex-shrink-0 mt-0.5">
+                    <i class="fa-solid fa-robot animate-pulse"></i>
+                </div>
+                <div class="bg-slate-900 border border-white/10 rounded-2xl rounded-tl-none px-3.5 py-2.5 max-w-[85%] text-left">
+                    <p class="text-xs text-slate-400 font-mono">Analyzing Scale Opus knowledge...</p>
+                </div>
+            `;
+            thread.appendChild(botDiv);
+            thread.scrollTop = thread.scrollHeight;
+
+            try {
+                const endpoints = [
+                    '/api/chat',
+                    'https://ais-pre-57s2bsqktsksju3wh2ll7q-591629809317.asia-east1.run.app/api/chat'
+                ];
+                let data = null;
+                for (const endpoint of endpoints) {
+                    try {
+                        const res = await fetch(endpoint, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ message: text, history: floatingHistory, fastMode: floatingFastMode })
+                        });
+                        if ((res.headers.get('content-type') || '').includes('application/json')) {
+                            const parsed = await res.json();
+                            if (res.ok && parsed.reply) {
+                                data = parsed;
+                                break;
+                            }
+                        }
+                    } catch (_) {}
+                }
+                if (!data || !data.reply) throw new Error('Unable to reach Scale Opus Gemini AI right now.');
+
+                floatingHistory.push({ role: 'user', text });
+                floatingHistory.push({ role: 'model', text: data.reply });
+
+                botDiv.innerHTML = `
+                    <div class="w-7 h-7 rounded-lg bg-brandOrange/20 border border-brandOrange/40 flex items-center justify-center text-brandOrange text-[10px] flex-shrink-0 mt-0.5">
+                        <i class="fa-solid fa-robot"></i>
+                    </div>
+                    <div class="bg-slate-900 border border-white/10 rounded-2xl rounded-tl-none px-3.5 py-2.5 max-w-[85%] text-left">
+                        <div class="text-xs text-slate-200 leading-relaxed break-words">${formatSandboxMarkdown(data.reply)}</div>
+                    </div>
+                `;
+            } catch (err) {
+                botDiv.innerHTML = `
+                    <div class="w-7 h-7 rounded-lg bg-red-500/20 border border-red-500/40 flex items-center justify-center text-red-400 text-[10px] flex-shrink-0 mt-0.5">
+                        <i class="fa-solid fa-triangle-exclamation"></i>
+                    </div>
+                    <div class="bg-slate-900 border border-red-500/30 rounded-2xl rounded-tl-none px-3.5 py-2.5 max-w-[85%] text-left">
+                        <p class="text-xs text-red-300 leading-relaxed">${escapeHTML(err.message || 'Connection error')}</p>
+                    </div>
+                `;
+            } finally {
+                floatingLoading = false;
+                thread.scrollTop = thread.scrollHeight;
+            }
+        }
     </script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>

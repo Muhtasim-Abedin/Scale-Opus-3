@@ -122,20 +122,43 @@ export default function App() {
     setIsLoading(true);
 
     try {
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: textToSend,
-          history: historyPayload,
-          fastMode,
-        }),
-      });
+      const apiEndpoints = [
+        '/api/chat',
+        'https://ais-pre-57s2bsqktsksju3wh2ll7q-591629809317.asia-east1.run.app/api/chat',
+      ];
 
-      const data = await response.json();
+      let data: { reply?: string; error?: string } | null = null;
+      let lastErr: Error | null = null;
 
-      if (!response.ok || data.error) {
-        throw new Error(data.error || 'Unable to connect to Scale Opus AI service.');
+      for (const endpoint of apiEndpoints) {
+        try {
+          const response = await fetch(endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              message: textToSend,
+              history: historyPayload,
+              fastMode,
+            }),
+          });
+          const contentType = response.headers.get('content-type') || '';
+          if (!contentType.includes('application/json')) {
+            continue;
+          }
+          const parsed = await response.json();
+          if (response.ok && parsed.reply) {
+            data = parsed;
+            break;
+          } else {
+            lastErr = new Error(parsed.error || 'Error from AI service');
+          }
+        } catch (innerErr) {
+          lastErr = innerErr instanceof Error ? innerErr : new Error('Network error');
+        }
+      }
+
+      if (!data || !data.reply) {
+        throw lastErr || new Error('Unable to connect to Scale Opus AI service.');
       }
 
       const botTurn: ChatTurn = {

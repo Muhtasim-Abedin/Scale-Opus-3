@@ -77,6 +77,18 @@ async function startServer() {
 
   app.use(express.json({ limit: '1mb' }));
 
+  // Allow cross-origin requests from GitHub Pages (scaleopus.com / *.github.io) so static hosting can use the Gemini backend
+  app.use('/api', (req, res, next) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    if (req.method === 'OPTIONS') {
+      res.status(204).end();
+      return;
+    }
+    next();
+  });
+
   // Serve static assets from ./assets so both dev and prod resolve ./assets/*
   app.use('/assets', express.static(path.join(__dirname, 'assets')));
 
